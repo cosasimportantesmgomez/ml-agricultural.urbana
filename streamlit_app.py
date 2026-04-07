@@ -4,12 +4,9 @@ import matplotlib.pyplot as plt  # Importamos pyplot para dibujar graficas
 import pandas as pd  # Importamos pandas para manejar datos en tablas
 import seaborn as sns  # Seaborn mejora el estilo de las graficas
 import streamlit as st  # Streamlit crea la interfaz interactiva
-from sklearn.compose import ColumnTransformer  # Permite transformar columnas de forma distinta
 from sklearn.ensemble import RandomForestRegressor  # Modelo de regresion con bosque aleatorio
 from sklearn.metrics import mean_squared_error, r2_score  # Metricas para evaluar el modelo
 from sklearn.model_selection import train_test_split  # Divide datos para entrenar y probar
-from sklearn.pipeline import Pipeline  # Encadena preprocesamiento y modelo
-from sklearn.preprocessing import OneHotEncoder  # Convierte texto a valores numericos
 
 
 st.set_page_config(page_title="Prediccion Agricola", page_icon="🌱", layout="wide")  # Configuramos pagina completa
@@ -114,43 +111,33 @@ def cargar_datos(ruta_dataset: str) -> pd.DataFrame:  # Funcion que lee el CSV
 
 
 @st.cache_resource  # Guardamos el modelo en cache para no reentrenar cada accion
-def entrenar_flujo(datos: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, pd.Series, pd.Series, pd.DataFrame]:  # Funcion que entrena y devuelve partes utiles
+def entrenar_flujo(datos: pd.DataFrame) -> tuple[RandomForestRegressor, pd.DataFrame, pd.Series, pd.DataFrame, pd.DataFrame, list[str]]:  # Funcion que entrena y devuelve partes utiles
     objetivo = datos["rendimiento"]  # Columna objetivo
-    entradas = datos.drop("rendimiento", axis=1)  # Variables de entrada
-
-    columnas_numericas = entradas.select_dtypes(include=["number"]).columns.tolist()  # Detectamos columnas numericas
-    columnas_categoricas = [col for col in entradas.columns if col not in columnas_numericas]  # Detectamos columnas de texto
-
-    procesador = ColumnTransformer(  # Armamos preprocesador
-        transformers=[
-            ("categoricas", OneHotEncoder(handle_unknown="ignore"), columnas_categoricas),
-        ],
-        remainder="passthrough",
-    )  # Cerramos preprocesador
-
-    modelo = Pipeline(  # Armamos pipeline completo
-        steps=[
-            ("procesador", procesador),
-            (
-                "regresor",
-                RandomForestRegressor(
-                    n_estimators=300,
-                    max_depth=10,
-                    random_state=42,
-                ),
-            ),
-        ]
-    )  # Cerramos pipeline
+    entradas = datos.drop("rendimiento", axis=1)  # Variables de entrada crudas
+    entradas_codificadas = pd.get_dummies(entradas, drop_first=True)  # Convertimos texto a numeros igual que en Colab
 
     entradas_entrenamiento, entradas_prueba, objetivo_entrenamiento, objetivo_prueba = train_test_split(
-        entradas,
+        entradas_codificadas,
         objetivo,
         test_size=0.2,
         random_state=42,
     )  # Dividimos datos
 
+    modelo = RandomForestRegressor(
+        n_estimators=300,
+        max_depth=10,
+        random_state=42,
+    )  # Creamos el modelo igual al enfoque original
+
     modelo.fit(entradas_entrenamiento, objetivo_entrenamiento)  # Entrenamos modelo
-    return modelo, entradas_prueba, objetivo_prueba, entradas, datos  # Devolvemos todo lo necesario para interfaz
+    columnas_modelo = entradas_codificadas.columns.tolist()  # Guardamos columnas usadas al entrenar
+    return modelo, entradas_prueba, objetivo_prueba, entradas, datos, columnas_modelo  # Devolvemos todo lo necesario para interfaz
+
+
+def codificar_y_alinear(entradas: pd.DataFrame, columnas_modelo: list[str]) -> pd.DataFrame:  # Funcion para que cualquier entrada tenga las mismas columnas del entrenamiento
+    entradas_codificadas = pd.get_dummies(entradas, drop_first=True)  # Aplicamos get_dummies igual que en entrenamiento
+    entradas_alineadas = entradas_codificadas.reindex(columns=columnas_modelo, fill_value=0)  # Alineamos columnas faltantes/sobrantes
+    return entradas_alineadas  # Devolvemos entradas listas para predecir
 
 
 def pintar_kpi(etiqueta: str, valor: str) -> None:  # Funcion para mostrar tarjetas de metrica
@@ -208,7 +195,7 @@ def principal() -> None:  # Funcion principal
     ruta_por_defecto = Path("data/dataset_agricultura_real_medellin.csv")  # Ruta por defecto
     ruta_datos = st.sidebar.text_input("Ruta del dataset CSV", str(ruta_por_defecto))  # Campo editable de ruta
 
-    modelo, entradas_prueba, objetivo_prueba, entradas_completas, datos = entrenar_flujo(cargar_datos(ruta_datos))  # Cargamos y entrenamos
+    modelo, entradas_prueba, objetivo_prueba, entradas_completas, datos, columnas_modelo = entrenar_flujo(cargar_datos(ruta_datos))  # Cargamos y entrenamos
 
     predicciones = modelo.predict(entradas_prueba)  # Predecimos sobre prueba
     error_medio_cuadratico = mean_squared_error(objetivo_prueba, predicciones)  # MSE
@@ -260,7 +247,8 @@ def principal() -> None:  # Funcion principal
             st.dataframe(datos_cultivo.head(20), use_container_width=True, height=320)
 
             entradas_cultivo = datos_cultivo.drop("rendimiento", axis=1)
-            predicciones_cultivo = modelo.predict(entradas_cultivo)
+            entradas_cultivo_alineadas = codificar_y_alinear(entradas_cultivo, columnas_modelo)
+            predicciones_cultivo = modelo.predict(entradas_cultivo_alineadas)
 
             promedio_real = datos_cultivo["rendimiento"].mean()
             promedio_predicho = float(predicciones_cultivo.mean())
@@ -285,7 +273,8 @@ def principal() -> None:  # Funcion principal
 
         if st.button("Predecir rendimiento"):
             tabla_entrada = pd.DataFrame([entrada_usuario])
-            prediccion_final = float(modelo.predict(tabla_entrada)[0])
+            tabla_entrada_alineada = codificar_y_alinear(tabla_entrada, columnas_modelo)
+            prediccion_final = float(modelo.predict(tabla_entrada_alineada)[0])
             st.success(f"Rendimiento estimado: {prediccion_final:.4f}")
             st.balloons()
             st.dataframe(tabla_entrada, use_container_width=True)
