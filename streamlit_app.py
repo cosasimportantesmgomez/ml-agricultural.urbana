@@ -1,152 +1,295 @@
-from pathlib import Path  # Traemos Path para manejar rutas de archivos sin necesidad de complicarse
+from pathlib import Path  # Traemos Path para manejar rutas de archivos de forma simple
 
-import matplotlib.pyplot as plt  # Importamos pyplot para hacer graficas bonitas
-import pandas as pd  # Importamos pandas para leer y manipular datos tipo tabla
-import seaborn as sns  # Seaborn nos ayuda a hacer graficas mas atractivas visualmente
-import streamlit as st  # Streamlit es lo que nos crea la interfaz web interactiva
-from sklearn.compose import ColumnTransformer  # Esta herramienta nos deja preparar columnas diferentes de formas distintas
-from sklearn.ensemble import RandomForestRegressor  # El modelo que aprende y predice rendimientos
-from sklearn.metrics import mean_squared_error, r2_score  # Funciones para saber que tan bien predice el modelo
-from sklearn.model_selection import train_test_split  # Divide datos entre entrenamieto y prueba
-from sklearn.pipeline import Pipeline  # Pipeline une todos los pasos de preparacion y modelo en uno
-from sklearn.preprocessing import OneHotEncoder  # Convierte texto a numeros para el modelo
-
-
-st.set_page_config(page_title="Prediccion Agricola", page_icon="🌱", layout="wide")  # Configuramos la pagina: titulo, icono y que use todo el ancho
+import matplotlib.pyplot as plt  # Importamos pyplot para dibujar graficas
+import pandas as pd  # Importamos pandas para manejar datos en tablas
+import seaborn as sns  # Seaborn mejora el estilo de las graficas
+import streamlit as st  # Streamlit crea la interfaz interactiva
+from sklearn.compose import ColumnTransformer  # Permite transformar columnas de forma distinta
+from sklearn.ensemble import RandomForestRegressor  # Modelo de regresion con bosque aleatorio
+from sklearn.metrics import mean_squared_error, r2_score  # Metricas para evaluar el modelo
+from sklearn.model_selection import train_test_split  # Divide datos para entrenar y probar
+from sklearn.pipeline import Pipeline  # Encadena preprocesamiento y modelo
+from sklearn.preprocessing import OneHotEncoder  # Convierte texto a valores numericos
 
 
-@st.cache_data  # Este decorador hace que los datos cargados se queden en memoria para no releer el CSV cada vez
-def cargar_datos(ruta_dataset: str) -> pd.DataFrame:  # Funcion que lee el CSV y nos lo devuelve
-    return pd.read_csv(ruta_dataset)  # Abrimos el archivo CSV y lo metemos en un dataframe
+st.set_page_config(page_title="Prediccion Agricola", page_icon="🌱", layout="wide")  # Configuramos pagina completa
 
 
-@st.cache_resource  # Este decorador hace que el modelo entrenado se quede en memoria sin reentrenar
-def entrenar_flujo(datos: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, pd.Series, pd.Series]:  # Funcion que prepara todo y entrena el modelo
-    objetivo = datos["rendimiento"]  # Sacamos la columna que queremos predecir
-    entradas = datos.drop("rendimiento", axis=1)  # Nos quedamos con el resto de columnas como entrada
+def aplicar_estilos() -> None:  # Funcion para dar estilo moderno a la app
+    st.markdown(  # Inyectamos CSS personalizado
+        """
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
 
-    columnas_numericas = entradas.select_dtypes(include=["number"]).columns.tolist()  # Identificamos cuales columnas son numeros
-    columnas_categoricas = [col for col in entradas.columns if col not in columnas_numericas]  # Identificamos cuales son texto
+            :root {
+                --fondo: #f4f8f3;
+                --texto: #1e2c24;
+                --verde: #1f6f52;
+                --verde-claro: #2f8f6a;
+                --ambar: #efb93b;
+                --tarjeta: #ffffff;
+            }
 
-    procesador = ColumnTransformer(  # Este procesador va a preparar las columnas antes de entrenar
-        transformers=[  # Aqui metemos las transformaciones
-            ("cat", OneHotEncoder(handle_unknown="ignore"), columnas_categoricas),  # Convertimos texto a numeros
-        ],  # Cerramos lista de transformaciones
-        remainder="passthrough",  # Dejamos las columnas numericas como estan
-    )  # Cerramos procesador
+            html, body, [class*="css"] {
+                font-family: 'Outfit', sans-serif;
+            }
 
-    modelo = Pipeline(  # Armamos un flujo que une procesamiento mas modelo
-        steps=[  # Pasos del flujo
-            ("procesador", procesador),  # Primer paso: procesar datos
-            (  # Segundo paso: entrenar
-                "regresor",  # Nombre del paso
-                RandomForestRegressor(  # Creamos el modelo bosque aleatorio
-                    n_estimators=300,  # 300 arboles de decision
-                    max_depth=10,  # Profundidad maxima de 10
-                    random_state=42,  # Semilla fija
-                ),  # Cerramos configuracion del modelo
-            ),  # Cerramos segundo paso
-        ]  # Cerramos pasos
-    )  # Cerramos flujo
+            .stApp {
+                background:
+                    radial-gradient(1100px 500px at 6% -10%, rgba(31,111,82,0.16), transparent 55%),
+                    radial-gradient(800px 400px at 95% 0%, rgba(239,185,59,0.20), transparent 50%),
+                    var(--fondo);
+                color: var(--texto);
+            }
 
-    entradas_entrenamiento, entradas_prueba, objetivo_entrenamiento, objetivo_prueba = train_test_split(  # Dividimos los datos
-        entradas,  # Datos de entrada
-        objetivo,  # Datos objetivo
-        test_size=0.2,  # 20 por ciento para prueba
-        random_state=42,  # Semilla fija
-    )  # Cerramos division
+            .hero {
+                background: linear-gradient(135deg, var(--verde), var(--verde-claro));
+                color: #ffffff;
+                border-radius: 18px;
+                padding: 1.35rem 1.5rem;
+                margin-bottom: 1rem;
+                box-shadow: 0 14px 28px rgba(31, 111, 82, 0.24);
+            }
 
-    modelo.fit(entradas_entrenamiento, objetivo_entrenamiento)  # Aqui el modelo aprende con entrenamiento
-    return modelo, entradas_prueba, objetivo_prueba, entradas  # Devolvemos el modelo y datos de prueba
+            .hero h1 {
+                margin: 0;
+                font-size: 1.8rem;
+                font-weight: 800;
+            }
 
+            .hero p {
+                margin: 0.4rem 0 0;
+                font-size: 1rem;
+                opacity: 0.92;
+            }
 
-def construir_formulario_manual(entradas: pd.DataFrame) -> dict:  # Funcion que arma el formulario dinamico en la interfaz
-    entrada_manual = {}  # Diccionario para guardar lo que el usuario ingresa
+            .kpi {
+                background: var(--tarjeta);
+                border-radius: 14px;
+                border: 1px solid rgba(31,111,82,0.12);
+                box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+                padding: 0.9rem 1rem;
+                margin-bottom: 0.85rem;
+            }
 
-    for columna in entradas.columns:  # Iteramos sobre cada columna del dataset
-        if pd.api.types.is_numeric_dtype(entradas[columna]):  # Si la columna es numero
-            valor_minimo = float(entradas[columna].min())  # Sacamos el minimo de la columna
-            valor_maximo = float(entradas[columna].max())  # Sacamos el maximo de la columna
-            valor_promedio = float(entradas[columna].mean())  # Sacamos el promedio
-            paso_valor = (valor_maximo - valor_minimo) / 100 if valor_maximo != valor_minimo else 1.0  # Calculamos paso para el deslizador
-            entrada_manual[columna] = st.number_input(  # Creamos un campo de numero en la interfaz
-                columna,  # Le ponemos el nombre de la columna
-                min_value=valor_minimo,  # Minimo valor permitido
-                max_value=valor_maximo,  # Maximo valor permitido
-                value=valor_promedio,  # Valor por defecto
-                step=paso_valor,  # Paso para subir y bajar
-            )  # Cerramos campo numero
-        else:  # Si no es numero, es texto
-            opciones = sorted(entradas[columna].dropna().astype(str).unique().tolist())  # Sacamos valores unicos en orden
-            if opciones:  # Si hay opciones
-                entrada_manual[columna] = st.selectbox(columna, options=opciones)  # Creamos dropdown para elegir
-            else:  # Si no hay opciones
-                entrada_manual[columna] = st.text_input(columna, value="")  # Creamos campo de texto libre
+            .kpi .etiqueta {
+                color: #4a5a52;
+                font-weight: 700;
+                letter-spacing: 0.03em;
+                font-size: 0.82rem;
+                text-transform: uppercase;
+            }
 
-    return entrada_manual  # Devolvemos lo que ingreso el usuario
+            .kpi .valor {
+                color: var(--verde);
+                font-size: 1.45rem;
+                font-weight: 800;
+                margin-top: 0.2rem;
+            }
 
+            .stTabs [data-baseweb="tab-list"] {
+                gap: 10px;
+            }
 
-def principal() -> None:  # Funcion principal que organiza toda la interfaz
-    st.title("Prediccion de Rendimiento Agricola")  # Titulo principal de la pagina
-    st.write("Interfaz interactiva para explorar cultivos y generar nuevas predicciones.")  # Descripcion
+            .stTabs [data-baseweb="tab"] {
+                background: #e7efe8;
+                border-radius: 12px;
+                padding: 0.45rem 0.95rem;
+                font-weight: 700;
+            }
 
-    ruta_por_defecto = Path("data/dataset_agricultura_real_medellin.csv")  # Ruta esperada del CSV
-    ruta_datos = st.sidebar.text_input("Ruta del dataset CSV", str(ruta_por_defecto))  # Campo para cambiar ruta en barra lateral
-
-    datos = cargar_datos(ruta_datos)  # Cargamos los datos
-    modelo, entradas_prueba, objetivo_prueba, entradas_completas = entrenar_flujo(datos)  # Entrenamos el modelo
-
-    predicciones = modelo.predict(entradas_prueba)  # Hacemos predicciones con datos de prueba
-    error_medio_cuadratico = mean_squared_error(objetivo_prueba, predicciones)  # Calculamos metrica de error
-    puntaje_r2 = r2_score(objetivo_prueba, predicciones)  # Calculamos metrica de desempenio
-
-    columna_1, columna_2 = st.columns(2)  # Dividimos pantalla en 2 columnas
-    columna_1.metric("MSE", f"{error_medio_cuadratico:.4f}")  # Mostramos MSE en primera columna
-    columna_2.metric("R2", f"{puntaje_r2:.4f}")  # Mostramos R2 en segunda columna
-
-    st.subheader("Real vs Predicho")  # Subtitulo para seccion de grafica
-    figura, grafico = plt.subplots(figsize=(8, 5))  # Creamos figura para la grafica
-    sns.scatterplot(x=objetivo_prueba, y=predicciones, alpha=0.75, ax=grafico)  # Dibujamos puntos
-    valor_minimo_grafico = min(objetivo_prueba.min(), predicciones.min())  # Minimo para linea de referencia
-    valor_maximo_grafico = max(objetivo_prueba.max(), predicciones.max())  # Maximo para linea de referencia
-    grafico.plot([valor_minimo_grafico, valor_maximo_grafico], [valor_minimo_grafico, valor_maximo_grafico], color="red", linestyle="--", linewidth=1)  # Dibujamos linea ideal
-    grafico.set_xlabel("Valor real")  # Nombre eje X
-    grafico.set_ylabel("Prediccion")  # Nombre eje Y
-    grafico.set_title("Comparacion de valores")  # Titulo grafica
-    st.pyplot(figura)  # Mostramos grafica en streamlit
-
-    pestana_1, pestana_2 = st.tabs(["Ver cultivo", "Nueva prediccion"])  # Creamos 2 pestanas en la interfaz
-
-    with pestana_1:  # Dentro primera pestana
-        st.subheader("Analisis por cultivo")  # Titulo de la seccion
-        if "cultivo" in datos.columns:  # Si existe columna cultivo
-            cultivo_elegido = st.selectbox("Selecciona un cultivo", sorted(datos["cultivo"].astype(str).unique()))  # Dropdown para elegir cultivo
-            subset = datos[datos["cultivo"].astype(str) == cultivo_elegido].copy()  # Filtramos datos por cultivo
-
-            st.write(f"Registros encontrados: {len(subset)}")  # Mostramos cuantos registros hay
-            st.dataframe(subset.head(20), use_container_width=True)  # Mostramos tabla con primeros 20 registros
-
-            entradas_subset = subset.drop("rendimiento", axis=1)  # Sacamos columna objetivo del subset
-            predicciones_subset = modelo.predict(entradas_subset)  # Predecimos con ese subset
-
-            promedio_real = subset["rendimiento"].mean()  # Calculamos promedio real
-            promedio_predicho = float(predicciones_subset.mean())  # Calculamos promedio predicho
-
-            col_1, col_2 = st.columns(2)  # Dividimos en 2 columnas para metricas
-            col_1.metric("Promedio real", f"{promedio_real:.4f}")  # Mostramos promedio real
-            col_2.metric("Promedio predicho", f"{promedio_predicho:.4f}")  # Mostramos promedio predicho
-        else:  # Si no existe columna cultivo
-            st.info("No existe la columna 'cultivo' en el dataset.")  # Avisamos que falta columna
-
-    with pestana_2:  # Dentro segunda pestana
-        st.subheader("Crear prediccion manual")  # Titulo de la seccion
-        entrada_usuario = construir_formulario_manual(entradas_completas)  # Armamos formulario dinamico
-
-        if st.button("Predecir rendimiento"):  # Si usuario aprieta boton
-            tabla_entrada = pd.DataFrame([entrada_usuario])  # Armamos tabla con datos del usuario
-            prediccion_final = float(modelo.predict(tabla_entrada)[0])  # Predecimos rendimiento
-            st.success(f"Rendimiento estimado: {prediccion_final:.4f}")  # Mostramos resultado en pantalla
+            .stTabs [aria-selected="true"] {
+                background: var(--verde) !important;
+                color: white !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )  # Cerramos CSS
 
 
-if __name__ == "__main__":  # Si ejecutas este archivo directamente
-    principal()  # Llama la funcion principal
+@st.cache_data  # Guardamos los datos en cache para no recargar cada vez
+def cargar_datos(ruta_dataset: str) -> pd.DataFrame:  # Funcion que lee el CSV
+    return pd.read_csv(ruta_dataset)  # Devolvemos datos del archivo
+
+
+@st.cache_resource  # Guardamos el modelo en cache para no reentrenar cada accion
+def entrenar_flujo(datos: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, pd.Series, pd.Series, pd.DataFrame]:  # Funcion que entrena y devuelve partes utiles
+    objetivo = datos["rendimiento"]  # Columna objetivo
+    entradas = datos.drop("rendimiento", axis=1)  # Variables de entrada
+
+    columnas_numericas = entradas.select_dtypes(include=["number"]).columns.tolist()  # Detectamos columnas numericas
+    columnas_categoricas = [col for col in entradas.columns if col not in columnas_numericas]  # Detectamos columnas de texto
+
+    procesador = ColumnTransformer(  # Armamos preprocesador
+        transformers=[
+            ("categoricas", OneHotEncoder(handle_unknown="ignore"), columnas_categoricas),
+        ],
+        remainder="passthrough",
+    )  # Cerramos preprocesador
+
+    modelo = Pipeline(  # Armamos pipeline completo
+        steps=[
+            ("procesador", procesador),
+            (
+                "regresor",
+                RandomForestRegressor(
+                    n_estimators=300,
+                    max_depth=10,
+                    random_state=42,
+                ),
+            ),
+        ]
+    )  # Cerramos pipeline
+
+    entradas_entrenamiento, entradas_prueba, objetivo_entrenamiento, objetivo_prueba = train_test_split(
+        entradas,
+        objetivo,
+        test_size=0.2,
+        random_state=42,
+    )  # Dividimos datos
+
+    modelo.fit(entradas_entrenamiento, objetivo_entrenamiento)  # Entrenamos modelo
+    return modelo, entradas_prueba, objetivo_prueba, entradas, datos  # Devolvemos todo lo necesario para interfaz
+
+
+def pintar_kpi(etiqueta: str, valor: str) -> None:  # Funcion para mostrar tarjetas de metrica
+    st.markdown(
+        f"""
+        <div class="kpi">
+            <div class="etiqueta">{etiqueta}</div>
+            <div class="valor">{valor}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )  # Cerramos tarjeta
+
+
+def construir_formulario_manual(entradas: pd.DataFrame) -> dict:  # Funcion que construye formulario dinamico
+    entrada_manual = {}  # Diccionario para guardar entradas del usuario
+
+    for columna in entradas.columns:  # Recorremos cada columna
+        if pd.api.types.is_numeric_dtype(entradas[columna]):  # Si es numerica
+            valor_minimo = float(entradas[columna].min())
+            valor_maximo = float(entradas[columna].max())
+            valor_promedio = float(entradas[columna].mean())
+            paso = (valor_maximo - valor_minimo) / 100 if valor_maximo != valor_minimo else 1.0
+            entrada_manual[columna] = st.number_input(
+                columna,
+                min_value=valor_minimo,
+                max_value=valor_maximo,
+                value=valor_promedio,
+                step=paso,
+            )
+        else:  # Si es categorica
+            opciones = sorted(entradas[columna].dropna().astype(str).unique().tolist())
+            if opciones:
+                entrada_manual[columna] = st.selectbox(columna, options=opciones)
+            else:
+                entrada_manual[columna] = st.text_input(columna, value="")
+
+    return entrada_manual  # Devolvemos entradas
+
+
+def principal() -> None:  # Funcion principal
+    aplicar_estilos()  # Aplicamos estilo visual
+
+    st.markdown(
+        """
+        <div class="hero">
+            <h1>Prediccion de Rendimiento Agricola</h1>
+            <p>Interfaz moderna para explorar cultivos, analizar resultados y crear predicciones al instante.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )  # Mostramos bloque superior
+
+    st.sidebar.header("Configuracion")  # Titulo lateral
+    ruta_por_defecto = Path("data/dataset_agricultura_real_medellin.csv")  # Ruta por defecto
+    ruta_datos = st.sidebar.text_input("Ruta del dataset CSV", str(ruta_por_defecto))  # Campo editable de ruta
+
+    modelo, entradas_prueba, objetivo_prueba, entradas_completas, datos = entrenar_flujo(cargar_datos(ruta_datos))  # Cargamos y entrenamos
+
+    predicciones = modelo.predict(entradas_prueba)  # Predecimos sobre prueba
+    error_medio_cuadratico = mean_squared_error(objetivo_prueba, predicciones)  # MSE
+    puntaje_r2 = r2_score(objetivo_prueba, predicciones)  # R2
+
+    c1, c2, c3, c4 = st.columns(4)  # Cuatro columnas para tarjetas
+    with c1:
+        pintar_kpi("MSE", f"{error_medio_cuadratico:.4f}")
+    with c2:
+        pintar_kpi("R2", f"{puntaje_r2:.4f}")
+    with c3:
+        pintar_kpi("Registros", f"{len(datos)}")
+    with c4:
+        pintar_kpi("Variables", f"{len(entradas_completas.columns)}")
+
+    izquierda, derecha = st.columns([1.8, 1.2])  # Distribucion para dos graficas
+
+    with izquierda:
+        st.subheader("Real vs Predicho")
+        fig_real_pred, ax_real_pred = plt.subplots(figsize=(8, 5))
+        sns.scatterplot(x=objetivo_prueba, y=predicciones, alpha=0.75, ax=ax_real_pred, color="#1f6f52")
+        minimo = min(objetivo_prueba.min(), predicciones.min())
+        maximo = max(objetivo_prueba.max(), predicciones.max())
+        ax_real_pred.plot([minimo, maximo], [minimo, maximo], color="#d1495b", linestyle="--", linewidth=1.2)
+        ax_real_pred.set_xlabel("Valor real")
+        ax_real_pred.set_ylabel("Prediccion")
+        ax_real_pred.set_title("Comparacion del modelo")
+        st.pyplot(fig_real_pred)
+
+    with derecha:
+        st.subheader("Distribucion del Error")
+        errores = objetivo_prueba - predicciones
+        fig_error, ax_error = plt.subplots(figsize=(6, 5))
+        sns.histplot(errores, bins=16, kde=True, ax=ax_error, color="#efb93b")
+        ax_error.set_xlabel("Error (real - predicho)")
+        ax_error.set_ylabel("Frecuencia")
+        ax_error.set_title("Comportamiento de errores")
+        st.pyplot(fig_error)
+
+    pestana_1, pestana_2 = st.tabs(["Ver cultivo", "Nueva prediccion"])  # Creamos pestañas
+
+    with pestana_1:
+        st.subheader("Analisis por cultivo")
+        if "cultivo" in datos.columns:
+            cultivo_elegido = st.selectbox("Selecciona un cultivo", sorted(datos["cultivo"].astype(str).unique()))
+            datos_cultivo = datos[datos["cultivo"].astype(str) == cultivo_elegido].copy()
+
+            st.write(f"Registros encontrados: {len(datos_cultivo)}")
+            st.dataframe(datos_cultivo.head(20), use_container_width=True, height=320)
+
+            entradas_cultivo = datos_cultivo.drop("rendimiento", axis=1)
+            predicciones_cultivo = modelo.predict(entradas_cultivo)
+
+            promedio_real = datos_cultivo["rendimiento"].mean()
+            promedio_predicho = float(predicciones_cultivo.mean())
+
+            cx1, cx2 = st.columns(2)
+            cx1.metric("Promedio real", f"{promedio_real:.4f}")
+            cx2.metric("Promedio predicho", f"{promedio_predicho:.4f}")
+
+            fig_cultivo, ax_cultivo = plt.subplots(figsize=(7, 3.8))
+            serie_cultivo = datos_cultivo.reset_index(drop=True)
+            sns.lineplot(data=serie_cultivo, x=serie_cultivo.index, y="rendimiento", ax=ax_cultivo, color="#2f8f6a")
+            ax_cultivo.set_xlabel("Indice de registro")
+            ax_cultivo.set_ylabel("Rendimiento")
+            ax_cultivo.set_title("Tendencia de rendimiento del cultivo")
+            st.pyplot(fig_cultivo)
+        else:
+            st.info("No existe la columna 'cultivo' en el dataset.")
+
+    with pestana_2:
+        st.subheader("Crear prediccion manual")
+        entrada_usuario = construir_formulario_manual(entradas_completas)
+
+        if st.button("Predecir rendimiento"):
+            tabla_entrada = pd.DataFrame([entrada_usuario])
+            prediccion_final = float(modelo.predict(tabla_entrada)[0])
+            st.success(f"Rendimiento estimado: {prediccion_final:.4f}")
+            st.balloons()
+            st.dataframe(tabla_entrada, use_container_width=True)
+
+
+if __name__ == "__main__":  # Punto de entrada
+    principal()  # Ejecutamos app
