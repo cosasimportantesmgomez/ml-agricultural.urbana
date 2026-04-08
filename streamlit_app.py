@@ -93,11 +93,39 @@ def aplicar_estilos() -> None:  # Funcion para dar estilo moderno a la app
                 border-radius: 12px;
                 padding: 0.45rem 0.95rem;
                 font-weight: 700;
+                color: #1f6f52 !important;
+                border: 1px solid rgba(31, 111, 82, 0.22);
             }
 
             .stTabs [aria-selected="true"] {
                 background: var(--verde) !important;
                 color: white !important;
+                border: 1px solid var(--verde) !important;
+            }
+
+            .stTabs [data-baseweb="tab"] p {
+                color: inherit !important;
+                font-weight: 700 !important;
+            }
+
+            .stButton > button {
+                background: linear-gradient(135deg, #1f6f52, #2f8f6a) !important;
+                color: #ffffff !important;
+                border: none !important;
+                border-radius: 10px !important;
+                font-weight: 700 !important;
+                padding: 0.6rem 1rem !important;
+                box-shadow: 0 8px 18px rgba(31, 111, 82, 0.25) !important;
+            }
+
+            .stButton > button:hover {
+                transform: translateY(-1px);
+                filter: brightness(1.03);
+            }
+
+            .stButton > button:focus {
+                outline: 2px solid #efb93b !important;
+                outline-offset: 2px !important;
             }
         </style>
         """,
@@ -116,6 +144,10 @@ def entrenar_flujo(datos: pd.DataFrame) -> tuple[RandomForestRegressor, pd.DataF
     entradas = datos.drop("rendimiento", axis=1)  # Variables de entrada crudas
     entradas_codificadas = pd.get_dummies(entradas, drop_first=True)  # Convertimos texto a numeros igual que en Colab
 
+    # entradas_entrenamiento son las preguntas con las que el modelo practica
+    # entradas_prueba son las preguntas del examen para ver si de verdad aprendio
+    # objetivo_entrenamiento son las respuestas correctas de la practica
+    # objetivo_prueba son las respuestas reales del examen para comparar que tan bien le fue
     entradas_entrenamiento, entradas_prueba, objetivo_entrenamiento, objetivo_prueba = train_test_split(
         entradas_codificadas,
         objetivo,
